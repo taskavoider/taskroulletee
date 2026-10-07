@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Task Roulette</title>
+<style>
+*{box-sizing:border-box}
+:root{--bg:#f6f4ef;--ink:#171717;--muted:#737373;--card:#fff;--line:#e5e2dc;--accent:#171717}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+button,input{font:inherit}
+.page{min-height:100vh;padding:32px 20px 48px}
+header{max-width:1120px;margin:0 auto 30px;display:flex;justify-content:space-between;align-items:center;gap:20px}
+.brand{font-weight:900;font-size:20px;letter-spacing:-.03em}
+.tag{font-size:12px;color:var(--muted);border:1px solid var(--line);background:#fff;padding:7px 11px;border-radius:999px}
+.layout{max-width:1120px;margin:auto;display:grid;grid-template-columns:minmax(0,1.35fr) minmax(310px,.65fr);gap:28px;align-items:start}
+.hero{text-align:center}
+h1{font-size:clamp(36px,6vw,64px);line-height:.95;letter-spacing:-.055em;margin:12px 0}
+.subtitle{color:var(--muted);font-size:16px;margin-bottom:28px}
+.wheel-wrap{width:min(70vw,570px);aspect-ratio:1;margin:0 auto;position:relative}
+.wheel{position:absolute;inset:0;border-radius:50%;border:10px solid var(--ink);box-shadow:0 24px 60px rgba(0,0,0,.13);transition:transform 5.2s cubic-bezier(.1,.72,.18,1)}
+.pointer{position:absolute;z-index:4;top:-7px;left:50%;transform:translateX(-50%);width:0;height:0;border-left:19px solid transparent;border-right:19px solid transparent;border-top:38px solid var(--ink)}
+.hub{position:absolute;z-index:5;left:50%;top:50%;transform:translate(-50%,-50%);width:92px;height:92px;border-radius:50%;background:#fff;border:7px solid var(--ink);display:grid;place-items:center;font-weight:950;font-size:13px}
+.result{margin:25px auto 0;max-width:560px;padding:18px;border-radius:18px;background:#fff;border:1px solid var(--line);min-height:88px}
+.result small{display:block;text-transform:uppercase;letter-spacing:.14em;color:var(--muted);font-size:10px;font-weight:800}
+#winner{font-size:24px;font-weight:900;margin-top:5px}
+.panel{background:var(--card);border:1px solid var(--line);border-radius:22px;padding:22px;box-shadow:0 10px 35px rgba(0,0,0,.05)}
+.panel h2{font-size:19px;margin:0 0 5px}
+.panel p{font-size:13px;color:var(--muted);margin:0 0 18px}
+.task{display:flex;gap:8px;margin:9px 0}
+.task input{width:100%;border:1px solid var(--line);border-radius:11px;padding:11px 12px;outline:none;background:#fff}
+.task input:focus{border-color:#999}
+.delete{width:42px;border:1px solid var(--line);border-radius:11px;background:#fff;cursor:pointer}
+.add{width:100%;border:1px dashed #bbb;border-radius:11px;background:#faf9f6;padding:11px;cursor:pointer;font-weight:750;margin:5px 0 15px}
+.actions{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+.spin,.stop{min-height:50px;border-radius:12px;cursor:pointer;font-weight:900}
+.spin{background:var(--ink);color:#fff;border:1px solid var(--ink)}
+.stop{background:#fff;color:var(--ink);border:1px solid var(--ink)}
+button:disabled{opacity:.4;cursor:not-allowed}
+.options{margin-top:17px;padding-top:17px;border-top:1px solid var(--line)}
+.check{display:flex;align-items:center;gap:9px;font-size:13px;color:#555}
+.check input{width:18px;height:18px}
+.tip{margin-top:14px;padding:12px;border-radius:12px;background:#f6f4ef;font-size:12px;color:#666;line-height:1.5}
+@media(max-width:800px){.layout{grid-template-columns:1fr}.wheel-wrap{width:min(88vw,500px)}header{margin-bottom:20px}}
+</style>
+</head>
+<body>
+<div class="page">
+<header><div class="brand">TASK ROULETTE</div><div class="tag">Let chance decide.</div></header>
+<main class="layout">
+<section class="hero">
+<h1>What are you<br>doing next?</h1>
+<div class="subtitle">Put your tasks in. Spin. Stop thinking about what to do.</div>
+<div class="wheel-wrap">
+<div class="pointer"></div>
+<div id="wheel" class="wheel"></div>
+<div class="hub">SPIN</div>
+</div>
+<div class="result" aria-live="polite"><small>Selected task</small><div id="winner">Ready when you are.</div></div>
+</section>
+<aside class="panel">
+<h2>Your tasks</h2>
+<p>Edit the list whenever you want.</p>
+<div id="tasks"></div>
+<button class="add" id="add">＋ Add task</button>
+<div class="actions">
+<button class="spin" id="spin">🎯 Spin</button>
+<button class="stop" id="stop" disabled>⏹ Stop</button>
+</div>
+<div class="options">
+<label class="check"><input id="removeWinner" type="checkbox"> Remove winner after spinning</label>
+<div class="tip">Keyboard shortcut: press <b>Space</b> to spin or stop.</div>
+</div>
+</aside>
+</main>
+</div>
+<script>
+const tasksEl=document.getElementById("tasks"), wheel=document.getElementById("wheel");
+const winnerEl=document.getElementById("winner"), spinBtn=document.getElementById("spin"), stopBtn=document.getElementById("stop");
+const removeWinner=document.getElementById("removeWinner");
+let tasks=["Study econometrics","Do 20 practice questions","Finish assignment","Gym","Revise notes","Take a break"];
+let rotation=0, spinning=false, raf=null, startTime=0, startRotation=0, targetRotation=0, chosen=0;
+const colors=["#f7c8d0","#c9d9ff","#ccebd7","#ffe2a8","#ddd0ff","#bfe8ee","#f5d0a9","#d7e5c5"];
+
+function drawWheel(){
+ const n=Math.max(tasks.length,1), seg=360/n;
+ wheel.style.background="conic-gradient("+tasks.map((_,i)=>`${colors[i%colors.length]} ${i*seg}deg ${(i+1)*seg}deg`).join(",")+")";
+}
+function renderTasks(){
+ tasksEl.innerHTML="";
+ tasks.forEach((task,i)=>{
+   const row=document.createElement("div"); row.className="task";
+   const input=document.createElement("input"); input.value=task; input.setAttribute("aria-label","Task "+(i+1));
+   input.addEventListener("input",e=>{tasks[i]=e.target.value;drawWheel()});
+   const del=document.createElement("button"); del.className="delete"; del.type="button"; del.textContent="×";
+   del.addEventListener("click",()=>{if(tasks.length<=2){winnerEl.textContent="Keep at least 2 tasks.";return}tasks.splice(i,1);renderTasks()});
+   row.append(input,del); tasksEl.append(row);
+ });
+ drawWheel();
+}
+function ease(t){return 1-Math.pow(1-t,4)}
+function animate(now){
+ if(!spinning)return;
+ const p=Math.min((now-startTime)/5200,1);
+ rotation=startRotation+(targetRotation-startRotation)*ease(p);
+ wheel.style.transform=`rotate(${rotation}deg)`;
+ if(p<1) raf=requestAnimationFrame(animate); else finish();
+}
+function begin(){
+ tasks=tasks.map(t=>t.trim()).filter(Boolean); renderTasks();
+ if(tasks.length<2){winnerEl.textContent="Add at least 2 tasks.";return}
+ chosen=Math.floor(Math.random()*tasks.length);
+ const seg=360/tasks.length, center=chosen*seg+seg/2;
+ startRotation=rotation; targetRotation=rotation+360*7+(360-center);
+ spinning=true; spinBtn.disabled=true; stopBtn.disabled=false; winnerEl.textContent="Spinning…";
+ startTime=performance.now(); raf=requestAnimationFrame(animate);
+}
+function finish(){
+ spinning=false; spinBtn.disabled=false; stopBtn.disabled=true;
+ winnerEl.textContent=tasks[chosen]||"Ready when you are.";
+ if(removeWinner.checked && tasks.length>2){tasks.splice(chosen,1);renderTasks()}
+}
+function stop(){
+ if(!spinning)return;
+ cancelAnimationFrame(raf); spinning=false; spinBtn.disabled=false; stopBtn.disabled=true;
+ const n=tasks.length, seg=360/n, norm=((rotation%360)+360)%360;
+ chosen=Math.floor((((360-norm)+seg/2)%360)/seg);
+ winnerEl.textContent=tasks[chosen]||"Ready when you are.";
+ if(removeWinner.checked && tasks.length>2){tasks.splice(chosen,1);renderTasks()}
+}
+document.getElementById("add").addEventListener("click",()=>{
+ tasks.push("New task"); renderTasks();
+ const inputs=tasksEl.querySelectorAll("input"); inputs[inputs.length-1].focus(); inputs[inputs.length-1].select();
+});
+spinBtn.addEventListener("click",begin); stopBtn.addEventListener("click",stop);
+document.addEventListener("keydown",e=>{
+ if(e.code==="Space" && !["INPUT","TEXTAREA"].includes(document.activeElement.tagName)){e.preventDefault();spinning?stop():begin()}
+});
+renderTasks();
+</script>
+</body>
+</html>
